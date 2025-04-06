@@ -1,35 +1,35 @@
-import NDK, { NDKKind, NDKUser, NDKUserProfile } from '@nostr-dev-kit/ndk';
-import { DEFAULT_RELAYS } from './constants';
-import { maskNPub } from './utils';
-import dayjs from 'dayjs';
+import NDK, { NDKKind, type NDKUser, type NDKUserProfile } from "@nostr-dev-kit/ndk"
+import { DEFAULT_RELAYS } from "./constants"
+import { maskNPub } from "./utils"
+import dayjs from "dayjs"
 
-type Theme = 'light' | 'dark';
+type Theme = "light" | "dark"
 
 export default class NostrProfile extends HTMLElement {
-  private rendered: boolean = false;
+  private rendered = false
 
-  private ndk: NDK = new NDK();
+  private ndk: NDK = new NDK()
 
   private userProfile: NDKUserProfile = {
-    name: '',
-    image: '',
-    nip05: '',
-  };
+    name: "",
+    image: "",
+    nip05: "",
+  }
 
-  private theme: Theme = 'light';
+  private theme: Theme = "light"
 
-  private isLoading: boolean = true;
-  private isStatsLoading: boolean = true;
+  private isLoading = true
+  private isStatsLoading = true
 
-  private isStatsFollowsLoading: boolean = true;
-  private isStatsFollowersLoading: boolean = true;
-  private isStatsNotesLoading: boolean = true;
-  private isStatsRepliesLoading: boolean = true;
-  private isStatsZapsLoading: boolean = true;
-  private isStatsRelaysLoading: boolean = true;
+  private isStatsFollowsLoading = true
+  private isStatsFollowersLoading = true
+  private isStatsNotesLoading = true
+  private isStatsRepliesLoading = true
+  private isStatsZapsLoading = true
+  private isStatsRelaysLoading = true
 
-  private isError: boolean = false; 
-  private isStatsError: boolean = false; 
+  private isError = false
+  private isStatsError = false
 
   private stats = {
     follows: 0,
@@ -38,726 +38,885 @@ export default class NostrProfile extends HTMLElement {
     replies: 0,
     zaps: 0,
     relays: 0,
-  };
+  }
 
-  private onClick: Function | null = null;
+  private onClick: Function | null = null
 
-  private ndkUser: NDKUser;
+  private ndkUser: NDKUser
+
+  private showRecentPosts = false
+  private recentPosts: any[] = []
+  private isRecentPostsLoading = true
 
   connectToNostr = async () => {
-    await this.ndk.connect();
+    await this.ndk.connect()
   }
 
   getRelays = () => {
-    const userRelays = this.getAttribute('relays');
+    const userRelays = this.getAttribute("relays")
 
-    if(userRelays) {
-      return userRelays.split(',');
+    if (userRelays) {
+      return userRelays.split(",")
     }
 
-    return DEFAULT_RELAYS;
+    return DEFAULT_RELAYS
   }
 
   getNDKUser = async () => {
-    const npub = this.getAttribute('npub');
-    const nip05 = this.getAttribute('nip05');
-    const pubkey = this.getAttribute('pubkey');
+    const npub = this.getAttribute("npub")
+    const nip05 = this.getAttribute("nip05")
+    const pubkey = this.getAttribute("pubkey")
 
-    if(npub) {
+    if (npub) {
       return this.ndk.getUser({
         npub: npub as string,
-      });
-    } else if(nip05) {
-      return this.ndk.getUserFromNip05(nip05 as string);
-    } else if(pubkey) {
+      })
+    } else if (nip05) {
+      return this.ndk.getUserFromNip05(nip05 as string)
+    } else if (pubkey) {
       return this.ndk.getUser({
         pubkey: pubkey,
-      });
+      })
     }
 
-    return null;
+    return null
   }
 
   getUserProfile = async () => {
     try {
-      this.isLoading = true;
+      this.isLoading = true
 
-      this.render();
+      this.render()
 
-      const user = await this.getNDKUser();
+      const user = await this.getNDKUser()
 
-      if(user?.npub) {
-        this.ndkUser = user;
+      if (user?.npub) {
+        this.ndkUser = user
 
-        await user.fetchProfile();
+        await user.fetchProfile()
 
-        this.userProfile = user.profile as NDKUserProfile;
+        this.userProfile = user.profile as NDKUserProfile
 
-        if(this.userProfile) {
+        if (this.userProfile) {
           // const stats = await this.getProfileStats();
           this.getProfileStats()
-          .then((stats) => {
-            this.isStatsError = false;
-            this.stats = stats;
-          })
-          .catch((err) => {
-            console.log(err);
-            this.isStatsError = true;
-          })
-          .finally(() => {
-            this.isStatsLoading = false;
-            this.render();
-          });
+            .then((stats) => {
+              this.isStatsError = false
+              this.stats = stats
+            })
+            .catch((err) => {
+              console.log(err)
+              this.isStatsError = true
+            })
+            .finally(() => {
+              this.isStatsLoading = false
+              this.render()
+            })
+
+          // Check if we need to fetch recent posts
+          if (this.showRecentPosts) {
+            this.fetchRecentPosts()
+          }
         }
 
-        if(!this.userProfile.image) {
-          this.userProfile.image = './assets/default_dp.png'
+        if (!this.userProfile.image) {
+          this.userProfile.image = "./assets/default_dp.png"
         }
-        this.isError = false;
+        this.isError = false
       } else {
-        throw new Error('Either npub or nip05 should be provided');
+        throw new Error("Either npub or nip05 should be provided")
       }
-
-    } catch(err) {
-      this.isError = true;
-      throw err;
+    } catch (err) {
+      this.isError = true
+      throw err
     } finally {
-      this.isLoading = false;
-      this.render();
+      this.isLoading = false
+      this.render()
     }
   }
 
   getProfileStats = async (): Promise<any> => {
     try {
-      this.isStatsFollowsLoading = true;
-      this.isStatsFollowersLoading = true;
-      this.isStatsNotesLoading = true;
-      const userHex = this.ndkUser.pubkey as string;
- 
+      this.isStatsFollowsLoading = true
+      this.isStatsFollowersLoading = true
+      this.isStatsNotesLoading = true
+      const userHex = this.ndkUser.pubkey as string
+
       // Get follows
-      this.ndkUser.follows()
+      this.ndkUser
+        .follows()
         .then((follows) => {
-          this.stats.follows = follows.size;
-          this.isStatsFollowsLoading = false;
-          this.render();
+          this.stats.follows = follows.size
+          this.isStatsFollowsLoading = false
+          this.render()
         })
         .catch((err) => {
-          console.log('Error fetching follows:', err);
-        });
-  
+          console.log("Error fetching follows:", err)
+        })
+
       // Get followers
-      this.ndk.fetchEvents({
-        kinds: [NDKKind.Contacts],
-        '#p': [userHex || ''],
-      })
+      this.ndk
+        .fetchEvents({
+          kinds: [NDKKind.Contacts],
+          "#p": [userHex || ""],
+        })
         .then((followers) => {
-          this.stats.followers = followers.size;
-          this.isStatsFollowersLoading = false;
-          this.render();
+          this.stats.followers = followers.size
+          this.isStatsFollowersLoading = false
+          this.render()
         })
         .catch((err) => {
-          console.log('Error fetching followers:', err);
-        });
+          console.log("Error fetching followers:", err)
+        })
 
       // Get notes and replies
-      this.ndk.fetchEvents({
-        kinds: [NDKKind.Text],
-        authors: [userHex],
-      })
+      this.ndk
+        .fetchEvents({
+          kinds: [NDKKind.Text],
+          authors: [userHex],
+        })
         .then((notes) => {
-          let replies = 0;
-          notes.forEach(note => {
-            if(note.hasTag('e')) {
-              replies += 1;
+          let replies = 0
+          notes.forEach((note) => {
+            if (note.hasTag("e")) {
+              replies += 1
             }
-          });
-          this.stats.replies = replies;
-          this.stats.notes = notes.size - replies;
-          this.isStatsNotesLoading = false;
-          this.render();
+          })
+          this.stats.replies = replies
+          this.stats.notes = notes.size - replies
+          this.isStatsNotesLoading = false
+          this.render()
         })
         .catch((err) => {
-          console.log('Error fetching notes:', err);
-        });
+          console.log("Error fetching notes:", err)
+        })
 
       // Zaps (placeholder for now)
-      this.stats.zaps = 0;
-      this.render();
+      this.stats.zaps = 0
+      this.render()
 
       // Relays (placeholder for now)
-      this.stats.relays = 0;
-      this.render();
+      this.stats.relays = 0
+      this.render()
 
-      return this.stats;
+      return this.stats
+    } catch (err) {
+      console.log("getProfileStats", err)
+      throw new Error("Error fetching stats")
+    }
+  }
 
-    } catch(err) {
-      console.log('getProfileStats', err);
-      throw new Error('Error fetching stats');
+  fetchRecentPosts = async () => {
+    try {
+      this.isRecentPostsLoading = true
+      this.render()
+
+      if (!this.ndkUser || !this.ndkUser.pubkey) {
+        throw new Error("User not available")
+      }
+
+      const userHex = this.ndkUser.pubkey as string
+
+      // Get recent notes (excluding replies)
+      const notes = await this.ndk.fetchEvents({
+        kinds: [NDKKind.Text],
+        authors: [userHex],
+        limit: 10, // Fetch more to filter out replies
+      })
+
+      // Filter out replies and get the 3 most recent posts
+      const posts = Array.from(notes)
+        .filter((note) => !note.hasTag("e"))
+        .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+        .slice(0, 3)
+
+      this.recentPosts = posts
+      return posts
+    } catch (err) {
+      console.log("Error fetching recent posts:", err)
+      return []
+    } finally {
+      this.isRecentPostsLoading = false
+      this.render()
     }
   }
 
   getTheme = async () => {
-    this.theme = 'light';
+    this.theme = "light"
 
-    const userTheme = this.getAttribute('theme');
+    const userTheme = this.getAttribute("theme")
 
-    if(userTheme) {
-      const isValidTheme = ['light', 'dark'].includes(userTheme);
+    if (userTheme) {
+      const isValidTheme = ["light", "dark"].includes(userTheme)
 
-      if(!isValidTheme) {
-        throw new Error(`Invalid theme '${userTheme}'. Accepted values are 'light', 'dark'`);
+      if (!isValidTheme) {
+        throw new Error(`Invalid theme '${userTheme}'. Accepted values are 'light', 'dark'`)
       }
 
-      this.theme = userTheme as Theme;
+      this.theme = userTheme as Theme
     }
   }
 
   connectedCallback() {
-
-    if(this.getAttribute("onClick") !== null) {
-      this.onClick = window['onClick'];
+    if (this.getAttribute("onClick") !== null) {
+      this.onClick = window["onClick"]
     }
+
+    this.showRecentPosts = this.getAttribute("show-recent-posts") === "true"
 
     if (!this.rendered) {
       this.ndk = new NDK({
         explicitRelayUrls: this.getRelays(),
-      });
+      })
 
-      this.getTheme();
+      this.getTheme()
 
-      this.connectToNostr();
+      this.connectToNostr()
 
-      this.getUserProfile();
+      this.getUserProfile()
 
-      this.rendered = true;
+      this.rendered = true
     }
   }
 
   static get observedAttributes() {
-    return ['relays', 'pubkey', 'nip05', 'theme', 'show-npub', 'show-follow', 'onClick'];
+    return ["relays", "pubkey", "nip05", "theme", "show-npub", "show-follow", "onClick", "show-recent-posts"]
   }
 
   attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
-    if(name === 'relays') {
-      this.ndk.explicitRelayUrls = this.getRelays();
-      this.connectToNostr();
+    if (name === "relays") {
+      this.ndk.explicitRelayUrls = this.getRelays()
+      this.connectToNostr()
     }
 
-    if(['relays', 'npub', 'nip05'].includes(name)) {
+    if (["relays", "npub", "nip05"].includes(name)) {
       // Possible property changes - relays, npub, nip05
       // For all these changes, we have to fetch profile anyways
       // TODO: Validate npub
-      this.getUserProfile();
+      this.getUserProfile()
     }
 
-    if(name === "onClick") {
-      this.onClick = window[newValue];
+    if (name === "onClick") {
+      this.onClick = window[newValue]
     }
 
-    if(name === 'theme') {
-      this.getTheme();
-      this.render();
+    if (name === "theme") {
+      this.getTheme()
+      this.render()
     }
 
-    if(['show-npub', 'show-follow'].includes(name)) {
-      this.render();
+    if (name === "show-recent-posts") {
+      this.showRecentPosts = newValue === "true"
+      if (this.showRecentPosts && this.ndkUser) {
+        this.fetchRecentPosts()
+      }
+      this.render()
+    }
+
+    if (["show-npub", "show-follow"].includes(name)) {
+      this.render()
     }
   }
 
   disconnectedCallback() {
     // TODO: Check for cleanup method
   }
-
-  getStyles() {
-    let variables = ``;
-
-    if(this.theme === 'dark') {
+  getStyles()
+  {
+    let variables = ``
+  
+    if (this.theme === "dark") {
       variables = `
-      --nstrc-profile-background: var(--nstrc-profile-background-dark);
-      --nstrc-profile-skeleton-min-hsl: var(--nstrc-profile-skeleton-min-hsl-dark);
-      --nstrc-profile-skeleton-max-hsl: var(--nstrc-profile-skeleton-max-hsl-dark);
-      --nstrc-profile-text-primary: var(--nstrc-profile-text-primary-dark);
-      --nstrc-profile-text-grey: var(--nstrc-profile-text-grey-dark);
-      --nstrc-profile-banner-placeholder-color: var(--nstrc-profile-banner-placeholder-color-dark);
-      --nstrc-profile-copy-foreground-color: var(--nstrc-profile-copy-foreground-color-dark);
-      `;
+        --nstrc-profile-background: var(--nstrc-profile-background-dark);
+        --nstrc-profile-skeleton-min-hsl: var(--nstrc-profile-skeleton-min-hsl-dark);
+        --nstrc-profile-skeleton-max-hsl: var(--nstrc-profile-skeleton-max-hsl-dark);
+        --nstrc-profile-text-primary: var(--nstrc-profile-text-primary-dark);
+        --nstrc-profile-text-grey: var(--nstrc-profile-text-grey-dark);
+        --nstrc-profile-banner-placeholder-color: var(--nstrc-profile-banner-placeholder-color-dark);
+        --nstrc-profile-copy-foreground-color: var(--nstrc-profile-copy-foreground-color-dark);
+        --nstrc-profile-post-background: rgba(255, 255, 255, 0.1);
+        `
     } else {
       variables = `
-      --nstrc-profile-background: var(--nstrc-profile-background-light);
-      --nstrc-profile-skeleton-min-hsl: var(--nstrc-profile-skeleton-min-hsl-light);
-      --nstrc-profile-skeleton-max-hsl: var(--nstrc-profile-skeleton-max-hsl-light);
-      --nstrc-profile-text-primary: var(--nstrc-profile-text-primary-light);
-      --nstrc-profile-text-grey: var(--nstrc-profile-text-grey-light);
-      --nstrc-profile-banner-placeholder-color: var(--nstrc-profile-banner-placeholder-color-light);
-      --nstrc-profile-copy-foreground-color: var(--nstrc-profile-copy-foreground-color-light);
-      `;
+        --nstrc-profile-background: var(--nstrc-profile-background-light);
+        --nstrc-profile-skeleton-min-hsl: var(--nstrc-profile-skeleton-min-hsl-light);
+        --nstrc-profile-skeleton-max-hsl: var(--nstrc-profile-skeleton-max-hsl-light);
+        --nstrc-profile-text-primary: var(--nstrc-profile-text-primary-light);
+        --nstrc-profile-text-grey: var(--nstrc-profile-text-grey-light);
+        --nstrc-profile-banner-placeholder-color: var(--nstrc-profile-banner-placeholder-color-light);
+        --nstrc-profile-copy-foreground-color: var(--nstrc-profile-copy-foreground-color-light);
+        --nstrc-profile-post-background: rgba(0, 0, 0, 0.05);
+        `
     }
-
-
+  
     return `
-    <style>
-    :root {
-        --nstrc-profile-background-light: #f5f5f5;
-        --nstrc-profile-background-dark: #000000;
-        --nstrc-profile-skeleton-min-hsl-light: 200, 20%, 80%;
-        --nstrc-profile-skeleton-min-hsl-dark: 200, 20%, 20%;
-        --nstrc-profile-skeleton-max-hsl-light: 200, 20%, 95%;
-        --nstrc-profile-skeleton-max-hsl-dark: 200, 20%, 30%;
-        --nstrc-profile-text-primary-light: #111111;
-        --nstrc-profile-text-primary-dark: #ffffff;
-        --nstrc-profile-text-grey-light: #808080;
-        --nstrc-profile-text-grey-dark: #666666;
-        --nstrc-profile-banner-placeholder-color-light: #e5e5e5;
-        --nstrc-profile-banner-placeholder-color-dark: #222222;
-        --nstrc-profile-copy-foreground-color-light: #222;
-        --nstrc-profile-copy-foreground-color-dark: #CCC;
-
-        ${variables}
-
-        --nstrc-profile-accent: #ca077c;
-
-        --nstrc-follow-btn-padding: 5px 8px !important;
-        --nstrc-follow-btn-font-size: 14px !important;
-        --nstrc-follow-btn-border-radius: 12px !important;
-        --nstrc-follow-btn-border-dark: 1px solid #DDDDDD !important;
-        --nstrc-follow-btn-border-light: 1px solid #DDDDDD !important;
-        --nstrc-follow-btn-horizontal-alignment: end !important;
-      }
-
-        .nostr-profile .skeleton {
-            animation: profile-skeleton-loading 0.5s linear infinite alternate;
+      <style>
+      :root {
+          --nstrc-profile-background-light: #f5f5f5;
+          --nstrc-profile-background-dark: #000000;
+          --nstrc-profile-skeleton-min-hsl-light: 200, 20%, 80%;
+          --nstrc-profile-skeleton-min-hsl-dark: 200, 20%, 20%;
+          --nstrc-profile-skeleton-max-hsl-light: 200, 20%, 95%;
+          --nstrc-profile-skeleton-max-hsl-dark: 200, 20%, 30%;
+          --nstrc-profile-text-primary-light: #111111;
+          --nstrc-profile-text-primary-dark: #ffffff;
+          --nstrc-profile-text-grey-light: #808080;
+          --nstrc-profile-text-grey-dark: #666666;
+          --nstrc-profile-banner-placeholder-color-light: #e5e5e5;
+          --nstrc-profile-banner-placeholder-color-dark: #222222;
+          --nstrc-profile-copy-foreground-color-light: #222;
+          --nstrc-profile-copy-foreground-color-dark: #CCC;
+  
+          ${variables}
+  
+          --nstrc-profile-accent: #ca077c;
+  
+          --nstrc-follow-btn-padding: 5px 8px !important;
+          --nstrc-follow-btn-font-size: 14px !important;
+          --nstrc-follow-btn-border-radius: 12px !important;
+          --nstrc-follow-btn-border-dark: 1px solid #DDDDDD !important;
+          --nstrc-follow-btn-border-light: 1px solid #DDDDDD !important;
+          --nstrc-follow-btn-horizontal-alignment: end !important;
         }
-
-        @keyframes profile-skeleton-loading {
-            0% {
-                background-color: hsl(var(--nstrc-profile-skeleton-min-hsl));
-            }
-            100% {
-                background-color: hsl(var(--nstrc-profile-skeleton-max-hsl));
-            }
+  
+          .nostr-profile .skeleton {
+              animation: profile-skeleton-loading 0.5s linear infinite alternate;
+          }
+  
+          @keyframes profile-skeleton-loading {
+              0% {
+                  background-color: hsl(var(--nstrc-profile-skeleton-min-hsl));
+              }
+              100% {
+                  background-color: hsl(var(--nstrc-profile-skeleton-max-hsl));
+              }
+          }
+  
+        .nostr-profile {
+          -webkit-tap-highlight-color: transparent;
+          text-size-adjust: 100%;
+          font-weight: 400;
+          font-size: 18px;
+          line-height: 1.5;
+          text-rendering: optimizeLegibility;
+          overflow-wrap: break-word;
+          font-family: Nacelle, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          box-sizing: border-box;
+          background-repeat: no-repeat;
+          min-height: 500px;
+          border: 1px solid #CCC;
+          border-radius: 5px;
+          background-color: var(--nstrc-profile-background);
+          cursor: pointer;
         }
-
-      .nostr-profile {
-        -webkit-tap-highlight-color: transparent;
-        text-size-adjust: 100%;
-        font-weight: 400;
-        font-size: 18px;
-        line-height: 1.5;
-        text-rendering: optimizeLegibility;
-        overflow-wrap: break-word;
-        font-family: Nacelle, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        box-sizing: border-box;
-        background-repeat: no-repeat;
-        min-height: 500px;
-        border: 1px solid #CCC;
-        border-radius: 5px;
-        background-color: var(--nstrc-profile-background);
-        cursor: pointer;
-      }
-
-      #profile {
-        position: relative;
-        background-color: var(--nstrc-profile-background);
-        padding-bottom: 4px;
-      }
-
-      #profile_banner {
-        width: 100%;
-        height: 214px;
-        overflow: hidden;
-      }
-
-      #profile_banner a {
-        outline: none;
-        color: var(--nstrc-profile-accent);
-      }
-
-      #profile_banner a img {
-        color: var(--nstrc-profile-accent);
-        max-width: 100%;
-        border-style: none;
-        display: block;
-        z-index: 22;
-        width: 100%;
-        height: 214px;
-        object-fit: cover;
-      }
-
-      #profile_banner .banner-placeholder {
-        width: 100%;
-        height: 214px;
-        background-color: var(--nstrc-profile-banner-placeholder-color);
-      }
-
-      .dp_container {
-        position: absolute;
-        top: 140px;
-        left: 15px;
-        overflow: hidden;
-      }
-
-      .avatar_container {
-        border: solid 4px var(--nstrc-profile-background);
-        border-radius: 50%;
-        background-color: var(--nstrc-profile-background);
-      }
-
-      .avatar_wrapper {
-        display: block;
-        min-height: 142px;
-      }
-
-      .xxl_avatar {
-        position: relative;
-        background-color: var(--nstrc-profile-background);
-        border-radius: 50%;
-        width: 142px;
-        height: 142px;
-      }
-
-      .backfill {
-        background-color: var(--nstrc-profile-background);
-        border-radius: 50%;
-        width: 142px;
-        height: 142px;
-      }
-
-      .backfill a {
-        outline: none;
-      }
-
-      .backfill a img {
-        max-width: 100%;
-        border-style: none;
-        display: block;
-        z-index: 22;
-        border-radius: 50%;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      }
-
-      .profile_actions {
-        height: 76px;
-        display: flex;
-        justify-content: end;
-        align-items: center;
-        padding: 0 18px;
-      }
-
-      .profile_data {
-        display: block;
-        margin-inline: 20px;
-        min-height: 52px;
-        margin-top: 14px;
-      }
-
-      .basic_info {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      .name {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        max-width: 60%;
-        height: 100%;
-      }
-
-      .name-text {
-        color: var(--nstrc-profile-text-primary);
-        font-size: 20px;
-        line-height: 1;
-        font-weight: 700;
-        text-overflow: ellipsis;
-        display: flex;
-        align-items: center;
-        vertical-align: baseline;
-      }
-
-      .verification-check {
-        width: 20px;
-        height: 20px;
-      }
-
-      .verification-icon {
-        width: 20px;
-        height: 20px;
-        position: relative;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-inline: 4px;
-      }
-
-      ._whiteCheckL_lfbpc_49 {
-        width: 12px;
-        height: 12px;
-        top: 4px;
-        left: 4px;
-        border-radius: 50%;
-        background-color: #fff;
-        position: absolute;
-      }
-
-      ._verifiedIconPrimal_lfbpc_30 {
-        width: 100%;
-        height: 100%;
-        background: var(--nstrc-profile-accent);
-        mask: url(https://primal.net/assets/verified-84f47cd3.svg) no-repeat 0/100%;
-      }
-
-      .joined {
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 16px;
-        text-align: right;
-        color: var(--nstrc-profile-text-grey);
-      }
-
-      .nip05-wrapper {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        color: var(--nstrc-profile-text-grey);
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 16px;
-        margin-top: 2px;
-        margin-bottom: 16px;
-      }
-
-      .nip05-container {
-        color: var(--nstrc-profile-text-grey);
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 16px;
-        display: flex;
-        align-items: center;
-      }
-
-      .nip05 {
-        color: var(--nstrc-profile-text-grey);
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 16px;
-        width: 100%;
-        overflow: hidden;
-      }
-
-      .about {
-        margin-inline: 20px;
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 20px;
-        color: var(--nstrc-profile-text-primary);
-      }
-
-      .links {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-inline: 20px;
-        margin-block: 12px;
-      }
-
-      .website {
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 20px;
-        display: flex;
-        align-items: center;
-      }
-
-      .website a {
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 20px;
-        outline: none;
-        color: var(--nstrc-profile-accent);
-        max-width: 350px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        word-wrap: normal;
-      }
-
-      .stats {
-        position: relative;
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        align-items: center;
-        padding-inline: 8px;
-        border-radius: 0;
-        padding-top: 22px;
-        border-top: none;
-        background-color: var(--nstrc-profile-background);
-      }
-
-      .stat {
-        position: relative;
-        display: inline-block;
-        padding-inline: 14px;
-        padding-block: 2px;
-        border: none;
-        background: none;
-        width: fit-content;
-        height: 40px;
-        margin: 0 0 12px;
-      }
-
-      .stat-inner {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-      }
-
-      .stat-inner .stat-value {
-        font-weight: 400;
-        font-size: 24px;
-        line-height: 24px;
-        color: var(--nstrc-profile-text-primary);
-      }
-
-      .stat-inner .stat-name {
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 16px;
-        color: var(--nstrc-profile-text-grey);
-        text-transform: lowercase;
-      }
-
-      .error-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 20px;
-        min-height: 500px;
-      }
-
-      .error {
-        width: 35px;
-        height: 35px;
-        border-radius: 50%;
-        background-color: red;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-size: 20px;
-        color: #FFF;
-      }
-
-      .error-text {
-        color: red;
-        font-weight: bold;
-      }
-
-      .npub-container {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        margin-top: 6px;
-      }
-
-      .npub-container .npub {
-        color: #a2a2a2;
-      }
-
-      .npub.full {
-        display: inline !important;
-      }
-
-      .npub.masked {
-        display: none !important;
-      }
-
-      .copy-button {
-        display: flex;
-        font-size: 16px;
-        min-width: 15px;
-        min-height: 15px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 5px;
-        cursor: pointer;
-        font-weight: bold;
-        color: var(--nstrc-profile-copy-foreground-color);
-      }
-        
-      .nip05 {
-        display: flex;
-        gap: 5px;
-      }
-
-      @media only screen and (max-width: 600px) {
-        button.stat .stat-value {
-          font-size: 18px !important;
+  
+        #profile {
+          position: relative;
+          background-color: var(--nstrc-profile-background);
+          padding-bottom: 4px;
         }
-
+  
+        #profile_banner {
+          width: 100%;
+          height: 214px;
+          overflow: hidden;
+        }
+  
+        #profile_banner a {
+          outline: none;
+          color: var(--nstrc-profile-accent);
+        }
+  
+        #profile_banner a img {
+          color: var(--nstrc-profile-accent);
+          max-width: 100%;
+          border-style: none;
+          display: block;
+          z-index: 22;
+          width: 100%;
+          height: 214px;
+          object-fit: cover;
+        }
+  
+        #profile_banner .banner-placeholder {
+          width: 100%;
+          height: 214px;
+          background-color: var(--nstrc-profile-banner-placeholder-color);
+        }
+  
+        .dp_container {
+          position: absolute;
+          top: 140px;
+          left: 15px;
+          overflow: hidden;
+        }
+  
+        .avatar_container {
+          border: solid 4px var(--nstrc-profile-background);
+          border-radius: 50%;
+          background-color: var(--nstrc-profile-background);
+        }
+  
+        .avatar_wrapper {
+          display: block;
+          min-height: 142px;
+        }
+  
+        .xxl_avatar {
+          position: relative;
+          background-color: var(--nstrc-profile-background);
+          border-radius: 50%;
+          width: 142px;
+          height: 142px;
+        }
+  
+        .backfill {
+          background-color: var(--nstrc-profile-background);
+          border-radius: 50%;
+          width: 142px;
+          height: 142px;
+        }
+  
+        .backfill a {
+          outline: none;
+        }
+  
+        .backfill a img {
+          max-width: 100%;
+          border-style: none;
+          display: block;
+          z-index: 22;
+          border-radius: 50%;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+  
+        .profile_actions {
+          height: 76px;
+          display: flex;
+          justify-content: end;
+          align-items: center;
+          padding: 0 18px;
+        }
+  
+        .profile_data {
+          display: block;
+          margin-inline: 20px;
+          min-height: 52px;
+          margin-top: 14px;
+        }
+  
+        .basic_info {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+  
+        .name {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          max-width: 60%;
+          height: 100%;
+        }
+  
+        .name-text {
+          color: var(--nstrc-profile-text-primary);
+          font-size: 20px;
+          line-height: 1;
+          font-weight: 700;
+          text-overflow: ellipsis;
+          display: flex;
+          align-items: center;
+          vertical-align: baseline;
+        }
+  
+        .verification-check {
+          width: 20px;
+          height: 20px;
+        }
+  
+        .verification-icon {
+          width: 20px;
+          height: 20px;
+          position: relative;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          margin-inline: 4px;
+        }
+  
+        ._whiteCheckL_lfbpc_49 {
+          width: 12px;
+          height: 12px;
+          top: 4px;
+          left: 4px;
+          border-radius: 50%;
+          background-color: #fff;
+          position: absolute;
+        }
+  
+        ._verifiedIconPrimal_lfbpc_30 {
+          width: 100%;
+          height: 100%;
+          background: var(--nstrc-profile-accent);
+          mask: url(https://primal.net/assets/verified-84f47cd3.svg) no-repeat 0/100%;
+        }
+  
+        .joined {
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 16px;
+          text-align: right;
+          color: var(--nstrc-profile-text-grey);
+        }
+  
+        .nip05-wrapper {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          color: var(--nstrc-profile-text-grey);
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 16px;
+          margin-top: 2px;
+          margin-bottom: 16px;
+        }
+  
+        .nip05-container {
+          color: var(--nstrc-profile-text-grey);
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 16px;
+          display: flex;
+          align-items: center;
+        }
+  
+        .nip05 {
+          color: var(--nstrc-profile-text-grey);
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 16px;
+          width: 100%;
+          overflow: hidden;
+        }
+  
+        .about {
+          margin-inline: 20px;
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 20px;
+          color: var(--nstrc-profile-text-primary);
+        }
+  
+        .links {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-inline: 20px;
+          margin-block: 12px;
+        }
+  
+        .website {
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 20px;
+          display: flex;
+          align-items: center;
+        }
+  
+        .website a {
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 20px;
+          outline: none;
+          color: var(--nstrc-profile-accent);
+          max-width: 350px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          word-wrap: normal;
+        }
+  
+        .stats {
+          position: relative;
+          display: flex;
+          flex-direction: row;
+          flex-wrap: wrap;
+          justify-content: space-between;
+          align-items: center;
+          padding-inline: 8px;
+          border-radius: 0;
+          padding-top: 22px;
+          border-top: none;
+          background-color: var(--nstrc-profile-background);
+        }
+  
+        .stat {
+          position: relative;
+          display: inline-block;
+          padding-inline: 14px;
+          padding-block: 2px;
+          border: none;
+          background: none;
+          width: fit-content;
+          height: 40px;
+          margin: 0 0 12px;
+        }
+  
+        .stat-inner {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+        }
+  
+        .stat-inner .stat-value {
+          font-weight: 400;
+          font-size: 24px;
+          line-height: 24px;
+          color: var(--nstrc-profile-text-primary);
+        }
+  
+        .stat-inner .stat-name {
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 16px;
+          color: var(--nstrc-profile-text-grey);
+          text-transform: lowercase;
+        }
+  
+        .error-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 20px;
+          min-height: 500px;
+        }
+  
+        .error {
+          width: 35px;
+          height: 35px;
+          border-radius: 50%;
+          background-color: red;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          font-size: 20px;
+          color: #FFF;
+        }
+  
+        .error-text {
+          color: red;
+          font-weight: bold;
+        }
+  
+        .npub-container {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          margin-top: 6px;
+        }
+  
+        .npub-container .npub {
+          color: #a2a2a2;
+        }
+  
         .npub.full {
-          display: none !important;
-        }
-
-        .npub.masked {
           display: inline !important;
         }
-      }
-
-      @media only screen and (max-width: 600px) {
-        :root {
-          --nstrc-follow-btn-padding: 5px 8px !important;
-          --nstrc-follow-btn-font-size: 12px !important;
-          --nstrc-follow-btn-min-height: auto !important;
-          --nstrc-follow-btn-border-radius: 8px !important;
-          --nstrc-follow-btn-error-max-width: 150px !important;
+  
+        .npub.masked {
+          display: none !important;
         }
-      }
-
-    </style>
-    `;
+  
+        .copy-button {
+          display: flex;
+          font-size: 16px;
+          min-width: 15px;
+          min-height: 15px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 5px;
+          cursor: pointer;
+          font-weight: bold;
+          color: var(--nstrc-profile-copy-foreground-color);
+        }
+          
+        .nip05 {
+          display: flex;
+          gap: 5px;
+        }
+  
+        /* Recent Posts Section Styles */
+        .recent-posts {
+          margin: 0 20px 20px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(128, 128, 128, 0.2);
+        }
+  
+        .recent-posts-title {
+          font-size: 16px;
+          font-weight: 700;
+          margin-bottom: 12px;
+          color: var(--nstrc-profile-text-primary);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+  
+        .recent-posts-title::before {
+          content: "";
+          display: inline-block;
+          width: 4px;
+          height: 16px;
+          background-color: var(--nstrc-profile-accent);
+          border-radius: 2px;
+        }
+  
+        .post {
+          padding: 12px 14px;
+          margin-bottom: 10px;
+          border-radius: 8px;
+          background-color: var(--nstrc-profile-post-background);
+          transition: transform 0.2s ease;
+          border: 1px solid rgba(128, 128, 128, 0.1);
+        }
+  
+        .post:hover {
+          transform: translateY(-2px);
+        }
+  
+        .post:last-child {
+          margin-bottom: 0;
+        }
+  
+        .post-content {
+          font-size: 14px;
+          line-height: 1.5;
+          margin-bottom: 8px;
+          color: var(--nstrc-profile-text-primary);
+          word-break: break-word;
+          white-space: pre-wrap;
+        }
+  
+        .post-content a {
+          color: var(--nstrc-profile-accent);
+          text-decoration: none;
+        }
+  
+        .post-content a:hover {
+          text-decoration: underline;
+        }
+  
+        .post-meta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+  
+        .post-date {
+          font-size: 12px;
+          color: var(--nstrc-profile-text-grey);
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+  
+        .post-date::before {
+          content: "•";
+          font-size: 14px;
+        }
+  
+        .no-posts {
+          font-size: 14px;
+          color: var(--nstrc-profile-text-grey);
+          font-style: italic;
+          padding: 12px;
+          text-align: center;
+          border: 1px dashed rgba(128, 128, 128, 0.3);
+          border-radius: 8px;
+        }
+  
+        .post-skeleton {
+          height: 80px;
+          border-radius: 8px;
+          margin-bottom: 10px;
+        }
+  
+        @media only screen and (max-width: 600px) {
+          button.stat .stat-value {
+            font-size: 18px !important;
+          }
+  
+          .npub.full {
+            display: none !important;
+          }
+  
+          .npub.masked {
+            display: inline !important;
+          }
+          
+          .post {
+            padding: 10px 12px;
+          }
+          
+          .post-content {
+            font-size: 13px;
+          }
+        }
+  
+        @media only screen and (max-width: 600px) {
+          :root {
+            --nstrc-follow-btn-padding: 5px 8px !important;
+            --nstrc-follow-btn-font-size: 12px !important;
+            --nstrc-follow-btn-min-height: auto !important;
+            --nstrc-follow-btn-border-radius: 8px !important;
+            --nstrc-follow-btn-error-max-width: 150px !important;
+          }
+        }
+  
+      </style>
+      `;
   }
 
   renderNpub() {
-    const npubAttribute = this.getAttribute('npub');
-    const showNpub = this.getAttribute('show-npub');
+    const npubAttribute = this.getAttribute("npub")
+    const showNpub = this.getAttribute("show-npub")
 
-    if(showNpub === 'false') {
-      return '';
+    if (showNpub === "false") {
+      return ""
     }
 
-    if(showNpub === null && this.userProfile.nip05) {
-      return '';
+    if (showNpub === null && this.userProfile.nip05) {
+      return ""
     }
 
     if (this.ndkUser == null) {
-      return '';
+      return ""
     }
 
-    if(!npubAttribute && !this.ndkUser.npub) {
-      console.warn('Cannot use showNpub without providing a nPub');
-      return '';
+    if (!npubAttribute && !this.ndkUser.npub) {
+      console.warn("Cannot use showNpub without providing a nPub")
+      return ""
     }
 
-    let npub = npubAttribute;
+    let npub = npubAttribute
 
-    if(!npub && this.ndkUser && this.ndkUser.npub) {
-      npub = this.ndkUser.npub;
+    if (!npub && this.ndkUser && this.ndkUser.npub) {
+      npub = this.ndkUser.npub
     }
 
-    if(!npub) {
-        console.warn('Cannot use showNPub without providing a nPub');
-        return '';
+    if (!npub) {
+      console.warn("Cannot use showNPub without providing a nPub")
+      return ""
     }
 
     return `
       <div class="npub-container">
         ${
-            this.isLoading
+          this.isLoading
             ? '<div style="width: 100px; height: 8px; border-radius: 5px" class="skeleton"></div>'
             : `
                 <span class="npub full">${npub}</span>
@@ -766,75 +925,124 @@ export default class NostrProfile extends HTMLElement {
             `
         }
       </div>
-    `;
+    `
   }
 
   copy(string: string) {
-    navigator.clipboard.writeText(string);
+    navigator.clipboard.writeText(string)
   }
 
   onProfileClick() {
-
-    if(this.isError) {
-        return;
+    if (this.isError) {
+      return
     }
 
-    if(this.onClick !== null && typeof this.onClick === 'function')  {
-      this.onClick(this.userProfile);
-      return;
+    if (this.onClick !== null && typeof this.onClick === "function") {
+      this.onClick(this.userProfile)
+      return
     }
 
-    let key = '';
+    let key = ""
 
-    const nip05 = this.getAttribute('nip05');
-    const npub = this.getAttribute('npub');
+    const nip05 = this.getAttribute("nip05")
+    const npub = this.getAttribute("npub")
 
-    if(nip05) {
+    if (nip05) {
       key = nip05
-    } else if(npub) {
-      key = npub;
+    } else if (npub) {
+      key = npub
     } else {
-      return;
+      return
     }
 
-    window.open(`https://njump.me/${key}`, '_blank');
+    window.open(`https://njump.me/${key}`, "_blank")
   }
 
   attachEventListeners() {
-    this.querySelector('.nostr-profile')?.addEventListener('click', (e) => {
-      if(!(e.target as HTMLElement).closest('.nostr-follow-button-container')) {
+    this.querySelector(".nostr-profile")?.addEventListener("click", (e) => {
+      if (!(e.target as HTMLElement).closest(".nostr-follow-button-container")) {
         this.onProfileClick()
       }
-    });
+    })
 
-    this.querySelector('#npub-copy')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.copy(this.getAttribute('npub') || this.ndkUser.npub || '')
-    });
+    this.querySelector("#npub-copy")?.addEventListener("click", (e) => {
+      e.stopPropagation()
+      this.copy(this.getAttribute("npub") || this.ndkUser.npub || "")
+    })
 
-    this.querySelector('#nip05-copy')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.copy(this.getAttribute('nip05') || this.userProfile.nip05 || '')
-    });
+    this.querySelector("#nip05-copy")?.addEventListener("click", (e) => {
+      e.stopPropagation()
+      this.copy(this.getAttribute("nip05") || this.userProfile.nip05 || "")
+    })
+  }
+
+  renderRecentPosts() {
+    if (!this.showRecentPosts) {
+      return ""
+    }
+
+    if (this.isRecentPostsLoading) {
+      return `
+        <div class="recent-posts">
+          <h3 class="recent-posts-title">Recent Posts</h3>
+          <div class="post skeleton" style="width: 100%; height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
+          <div class="post skeleton" style="width: 100%; height: 80px; border-radius: 8px; margin-bottom: 10px;"></div>
+          <div class="post skeleton" style="width: 100%; height: 80px; border-radius: 8px;"></div>
+        </div>
+      `
+    }
+
+    if (this.recentPosts.length === 0) {
+      return `
+        <div class="recent-posts">
+          <h3 class="recent-posts-title">Recent Posts</h3>
+          <div class="no-posts">No recent posts found</div>
+        </div>
+      `
+    }
+
+    const postsHtml = this.recentPosts
+      .map((post) => {
+        const content = post.content || ""
+        const date = post.created_at ? dayjs(post.created_at * 1000).format("MMM D, YYYY") : ""
+
+        return `
+        <div class="post">
+          <div class="post-content">${content}</div>
+          <div class="post-date">${date}</div>
+        </div>
+      `
+      })
+      .join("")
+
+    return `
+      <div class="recent-posts">
+        <h3 class="recent-posts-title">Recent Posts</h3>
+        ${postsHtml}
+      </div>
+    `
   }
 
   render() {
-    this.innerHTML = this.getStyles();
+    this.innerHTML = this.getStyles()
 
-    if(this.userProfile === undefined || this.userProfile.image === undefined || (this.userProfile.displayName === undefined && this.userProfile.name === undefined)) {
-      this.isError = true;
+    if (
+      this.userProfile === undefined ||
+      this.userProfile.image === undefined ||
+      (this.userProfile.displayName === undefined && this.userProfile.name === undefined)
+    ) {
+      this.isError = true
     }
 
-    let date = '';
-    if(this.userProfile && this.userProfile.created_at) {
-        date = dayjs(this.userProfile.created_at * 1000).format('MMM D, YYYY');
+    let date = ""
+    if (this.userProfile && this.userProfile.created_at) {
+      date = dayjs(this.userProfile.created_at * 1000).format("MMM D, YYYY")
     }
 
-    const showFollow = this.getAttribute('show-follow') === "true";
+    const showFollow = this.getAttribute("show-follow") === "true"
 
-    if(!this.isLoading && this.isError) {
-        this.innerHTML += 
-            `<div class="nostr-profile">
+    if (!this.isLoading && this.isError) {
+      this.innerHTML += `<div class="nostr-profile">
                 <div class='error-container'>
                     <div class="error">&#9888;</div>
                     <span class="error-text">
@@ -844,17 +1052,17 @@ export default class NostrProfile extends HTMLElement {
                       </span>
                     </div>
             </div>
-        `;
+        `
     } else {
-        this.innerHTML += `
+      this.innerHTML += `
             <div class="nostr-profile">
                 <div id="profile">
                     <div id="profile_banner">
                     ${
-                        this.isLoading
+                      this.isLoading
                         ? '<div style="width: 100%; height: 100%;" class="skeleton"></div>'
                         : this.userProfile.banner
-                        ? `
+                          ? `
                                 <a
                                     target="_blank"
                                     data-cropped="true"
@@ -869,7 +1077,7 @@ export default class NostrProfile extends HTMLElement {
                                         width="524px"/>
                                     </a>
                             `
-                        : '<div class="banner-placeholder"></div>'
+                          : '<div class="banner-placeholder"></div>'
                     }
                     </div>
                     <div class="dp_container">
@@ -878,7 +1086,7 @@ export default class NostrProfile extends HTMLElement {
                         <div class="xxl_avatar">
                             <div class="backfill">
                             ${
-                                this.isLoading
+                              this.isLoading
                                 ? '<div style="width: 100%; height: 100%; border-radius: 50%" class="skeleton"></div>'
                                 : `
                                     <a
@@ -903,19 +1111,20 @@ export default class NostrProfile extends HTMLElement {
                     <div class="profile_actions">
                       ${
                         this.ndkUser && this.ndkUser.npub && showFollow
-                        ? `
+                          ? `
                           <nostr-follow-button
                             npub="${this.ndkUser.npub}"
                             theme="${this.theme}"
                           ></nostr-follow-button>
-                        `: ''
+                        `
+                          : ""
                       }
                     </div>
                     <div class="profile_data">
                     <div class="basic_info">
                         <div class="name">
                         ${
-                            this.isLoading
+                          this.isLoading
                             ? '<div style="width: 100px; height: 16px; border-radius: 20px" class="skeleton"></div>'
                             : `
                                 <div class="name-text">${this.userProfile.displayName || this.userProfile.name}</div>
@@ -926,15 +1135,14 @@ export default class NostrProfile extends HTMLElement {
                     <div class="nip05-wrapper">
                         <div class="nip05-container">
                         ${
-                            this.isLoading
+                          this.isLoading
                             ? '<div style="width: 75px; height: 8px; border-radius: 20px" class="skeleton"></div>'
-                            :
-                              this.userProfile.nip05
+                            : this.userProfile.nip05
                               ? `<div class="nip05">
                                   <span>${this.userProfile.nip05}</span>
                                   <span id="nip05-copy" class="copy-button">&#x2398;</span>
                                 </div>`
-                              : ''
+                              : ""
                         }
                         </div>
 
@@ -944,40 +1152,40 @@ export default class NostrProfile extends HTMLElement {
                     
                     <div class="about">
                         ${
-                            this.isLoading
+                          this.isLoading
                             ? `
                                 <div style="width: 100%; height: 12px; border-radius: 20px; margin-bottom: 12px" class="skeleton"></div>
                                 <div style="width: 40%; height: 12px; border-radius: 20px" class="skeleton"></div>
                             `
-                            : this.userProfile.about || ''
+                            : this.userProfile.about || ""
                         }
                     </div>
                     <div class="links">
                     ${
-                        this.isLoading
+                      this.isLoading
                         ? '<div style="width: 150px; height: 12px; border-radius: 20px" class="skeleton"></div>'
                         : this.userProfile.website
-                            ? `
+                          ? `
                                 <div class="website">
                                     <a target="_blank" href="${this.userProfile.website}"
                                     >${this.userProfile.website}</a
                                     >
                                 </div>
                             `
-                            : ''
+                          : ""
                     }
                     </div>
                 </div>
                 <div class="stats" data-orientation="horizontal">
                     ${
                       this.isStatsError
-                      ? `<p class="error-text">Error loading stats</p>`
-                      : `
+                        ? `<p class="error-text">Error loading stats</p>`
+                        : `
                         <button class="stat" data-orientation="horizontal">
                             <div class="stat-inner">
                                 <div class="stat-value">
                                     ${
-                                        this.isStatsNotesLoading
+                                      this.isStatsNotesLoading
                                         ? '<div style="width: 50px; height: 28px; border-radius: 5px" class="skeleton"></div>'
                                         : this.stats.notes
                                     }
@@ -990,7 +1198,7 @@ export default class NostrProfile extends HTMLElement {
                             <div class="stat-inner">
                                 <div class="stat-value">
                                     ${
-                                        this.isStatsNotesLoading
+                                      this.isStatsNotesLoading
                                         ? '<div style="width: 50px; height: 28px; border-radius: 5px" class="skeleton"></div>'
                                         : this.stats.replies
                                     }
@@ -1003,7 +1211,7 @@ export default class NostrProfile extends HTMLElement {
                             <div class="stat-inner">
                                 <div class="stat-value">
                                     ${
-                                        this.isStatsLoading
+                                      this.isStatsLoading
                                         ? '<div style="width: 50px; height: 28px; border-radius: 5px" class="skeleton"></div>'
                                         : this.stats.zaps
                                     }
@@ -1017,7 +1225,7 @@ export default class NostrProfile extends HTMLElement {
                             <div class="stat-inner">
                                 <div class="stat-value">
                                     ${
-                                        this.isStatsFollowsLoading
+                                      this.isStatsFollowsLoading
                                         ? '<div style="width: 50px; height: 28px; border-radius: 5px" class="skeleton"></div>'
                                         : this.stats.follows
                                     }
@@ -1030,7 +1238,7 @@ export default class NostrProfile extends HTMLElement {
                             <div class="stat-inner">
                                 <div class="stat-value">
                                     ${
-                                        this.isStatsFollowersLoading
+                                      this.isStatsFollowersLoading
                                         ? '<div style="width: 50px; height: 28px; border-radius: 5px" class="skeleton"></div>'
                                         : this.stats.followers
                                     }
@@ -1044,7 +1252,7 @@ export default class NostrProfile extends HTMLElement {
                             <div class="stat-inner">
                                 <div class="stat-value">
                                     ${
-                                        this.isStatsRelaysLoading
+                                      this.isStatsRelaysLoading
                                         ? '<div style="width: 20px; height: 28px; border-radius: 5px" class="skeleton"></div>'
                                         : this.stats.relays
                                     }
@@ -1056,13 +1264,14 @@ export default class NostrProfile extends HTMLElement {
                       `
                     }
                 </div>
+                ${this.renderRecentPosts()}
             </div>
-        `;
+        `
     }
 
-    this.attachEventListeners();
-
+    this.attachEventListeners()
   }
 }
 
-customElements.define("nostr-profile", NostrProfile);
+customElements.define("nostr-profile", NostrProfile)
+
